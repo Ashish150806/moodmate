@@ -26,8 +26,8 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mood }),
       });
-      const recs = await recRes.json();
-      setTracks(recs);
+      const { tracks } = await recRes.json(); // ✅ extract tracks
+      setTracks(tracks || []);
     } catch (err) {
       console.error("Error:", err);
     } finally {
@@ -76,7 +76,7 @@ export default function HomePage() {
               <div>
                 <p className="font-medium">{t.name}</p>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {t.artists?.map((a: any) => a.name).join(", ")}
+                  {t.artists}
                 </p>
               </div>
               {t.preview_url && (
