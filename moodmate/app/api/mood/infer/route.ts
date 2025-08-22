@@ -1,4 +1,4 @@
-export const runtime = "edge"; // run on edge runtime
+export const runtime = "nodejs"; // run on edge runtime
 
 import * as tf from "@tensorflow/tfjs";
 
@@ -53,7 +53,7 @@ export async function POST(req: Request): Promise<Response> {
     // Clean up tensor to avoid memory leak
     tf.dispose([inputTensor, prediction]);
 
-    const moods = ["happy", "sad", "calm", "stressed", "angry", "tired"];
+    const moods = ["Positive", "Neutral", "Negative", "Irrelevant"];
     const mood = moods[moodIdx] ?? "unknown";
 
     return Response.json({ mood, scores: predictionData });
