@@ -8,6 +8,10 @@ async function getSpotifyAccessToken() {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing Spotify client credentials");
+  }
+
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
   const res = await fetch(SPOTIFY_TOKEN_URL, {
@@ -19,7 +23,11 @@ async function getSpotifyAccessToken() {
     body: "grant_type=client_credentials",
   });
 
-  if (!res.ok) throw new Error("Failed to fetch Spotify access token");
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Failed to fetch Spotify access token: ${msg}`);
+  }
+
   const data = await res.json();
   return data.access_token;
 }
@@ -32,7 +40,11 @@ async function getSpotifyTracks(query: string) {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 
-  if (!res.ok) throw new Error("Failed to fetch tracks from Spotify");
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Failed to fetch tracks from Spotify: ${msg}`);
+  }
+
   const data = await res.json();
 
   return data.tracks.items.map((track: any) => ({
@@ -46,6 +58,15 @@ async function getSpotifyTracks(query: string) {
 
 export const runtime = "nodejs";
 
+// ✅ Quick browser test: GET
+export async function GET() {
+  return NextResponse.json({
+    status: "ok",
+    message: "Mood inference API is running 🚀",
+  });
+}
+
+// ✅ Full pipeline: POST
 export async function POST(req: NextRequest) {
   try {
     const { text } = await req.json();
@@ -55,7 +76,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 1️⃣ Call Flask backend to predict mood
-    const flaskUrl = process.env.FLASK_API_URL || "http://127.0.0.1:5000/predict";
+    const flaskUrl =
+      process.env.FLASK_API_URL || "http://127.0.0.1:5000/predict";
+
     const flaskRes = await fetch(flaskUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -64,11 +87,14 @@ export async function POST(req: NextRequest) {
 
     if (!flaskRes.ok) {
       const errText = await flaskRes.text();
-      return NextResponse.json({ error: "Flask API error", details: errText }, { status: flaskRes.status });
+      return NextResponse.json(
+        { error: "Flask API error", details: errText },
+        { status: flaskRes.status }
+      );
     }
 
     const moodData = await flaskRes.json();
-    const predictedMood = moodData.mood || text; // fallback: use text if Flask doesn't return mood
+    const predictedMood = moodData.mood || text; // fallback
 
     // 2️⃣ Fetch Spotify tracks based on predicted mood
     const tracks = await getSpotifyTracks(predictedMood);
@@ -77,6 +103,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ mood: predictedMood, tracks });
   } catch (err: any) {
     console.error("❌ Error in Next.js API:", err);
-    return NextResponse.json({ error: "Internal Server Error", details: err.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error", details: err.message },
+      { status: 500 }
+    );
   }
 }
