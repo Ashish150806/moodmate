@@ -1,31 +1,13 @@
-// app/api/music/recommend/route.ts
-import axios from "axios";
+export const runtime = "nodejs"; // force Node.js runtime
 
-// Map your ML moods → Spotify recommendation parameters
 const moodParams: Record<string, any> = {
-  Positive: { 
-    target_valence: 0.9, 
-    target_energy: 0.7, 
-    seed_genres: "pop,dance,edm" 
-  },
-  Neutral: { 
-    target_valence: 0.5, 
-    target_energy: 0.5, 
-    seed_genres: "indie,acoustic,lofi" 
-  },
-  Negative: { 
-    target_valence: 0.2, 
-    target_energy: 0.3, 
-    seed_genres: "acoustic,indie,ambient" 
-  },
-  Irrelevant: { 
-    target_valence: 0.6, 
-    target_energy: 0.6, 
-    seed_genres: "pop,hip-hop,rock" 
-  },
+  Positive: { target_valence: 0.9, target_energy: 0.7, seed_genres: "pop,dance,edm" },
+  Neutral: { target_valence: 0.5, target_energy: 0.5, seed_genres: "indie,acoustic,lofi" },
+  Negative: { target_valence: 0.2, target_energy: 0.3, seed_genres: "acoustic,indie,ambient" },
+  Irrelevant: { target_valence: 0.6, target_energy: 0.6, seed_genres: "pop,hip-hop,rock" },
 };
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<Response> {
   try {
     const { mood, accessToken } = await req.json();
 
@@ -36,21 +18,31 @@ export async function POST(req: Request) {
       );
     }
 
-    const params = moodParams[mood] || {
-      target_valence: 0.5,
-      seed_genres: "pop",
-    };
+    const params = moodParams[mood] || { target_valence: 0.5, seed_genres: "pop" };
 
-    const res = await axios.get("https://api.spotify.com/v1/recommendations", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      params: {
-        limit: 10,
-        ...params,
-      },
-    });
+    // Build query string
+    const query = new URLSearchParams({ limit: "10", ...params }).toString();
 
-    // 🎵 Extract only useful info
-    const recommendations = res.data.tracks.map((track: any) => ({
+    // Call Spotify API
+    const spotifyRes = await fetch(
+      `https://api.spotify.com/v1/recommendations?${query}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!spotifyRes.ok) {
+      const errText = await spotifyRes.text();
+      console.error("Spotify API error:", errText);
+      return Response.json(
+        { error: "Failed to fetch recommendations", details: errText },
+        { status: spotifyRes.status }
+      );
+    }
+
+    const data = await spotifyRes.json();
+
+    const recommendations = data.tracks.map((track: any) => ({
       id: track.id,
       name: track.name,
       artists: track.artists.map((a: any) => a.name).join(", "),
@@ -62,12 +54,9 @@ export async function POST(req: Request) {
 
     return Response.json({ tracks: recommendations });
   } catch (error: any) {
-    console.error(
-      "Spotify Recommendation API Error:",
-      error.response?.data || error.message
-    );
+    console.error("Recommendation API Error:", error.message);
     return Response.json(
-      { error: "Failed to fetch recommendations" },
+      { error: "Internal Server Error", details: error.message },
       { status: 500 }
     );
   }
