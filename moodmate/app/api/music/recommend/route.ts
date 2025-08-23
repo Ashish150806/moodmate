@@ -1,4 +1,4 @@
-export const runtime = "nodejs"; // force Node.js runtime
+export const runtime = "nodejs";
 import { URLSearchParams } from "url";
 
 const moodParams: Record<string, any> = {
@@ -8,44 +8,46 @@ const moodParams: Record<string, any> = {
   Irrelevant: { target_valence: 0.6, target_energy: 0.6, seed_genres: "pop,hip-hop,rock" },
 };
 
-async function getAccessToken(code: string) {
+async function getAppAccessToken() {
   const params = new URLSearchParams({
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
-    client_id: process.env.SPOTIFY_CLIENT_ID!,
-    client_secret: process.env.SPOTIFY_CLIENT_SECRET!,
+    grant_type: "client_credentials",
   });
 
   const res = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      Authorization:
+        "Basic " +
+        Buffer.from(
+          process.env.SPOTIFY_CLIENT_ID + ":" + process.env.SPOTIFY_CLIENT_SECRET
+        ).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
     body: params.toString(),
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to get access token: ${await res.text()}`);
+    throw new Error(`Failed to get app token: ${await res.text()}`);
   }
 
-  return res.json(); // returns { access_token, refresh_token, expires_in }
+  return res.json(); // { access_token, token_type, expires_in }
 }
 
 export async function POST(req: Request): Promise<Response> {
   try {
-    const { mood, code } = await req.json();
+    const { mood } = await req.json();
 
-    if (!mood || !code) {
-      return Response.json({ error: "Mood and Spotify code are required" }, { status: 400 });
+    if (!mood) {
+      return Response.json({ error: "Mood is required" }, { status: 400 });
     }
 
-    // Exchange code for access token
-    const tokenData = await getAccessToken(code);
+    // Get app access token
+    const tokenData = await getAppAccessToken();
     const accessToken = tokenData.access_token;
 
     const params = moodParams[mood] || { target_valence: 0.5, seed_genres: "pop" };
     const query = new URLSearchParams({ limit: "10", ...params }).toString();
 
-    // Call Spotify recommendations
     const spotifyRes = await fetch(`https://api.spotify.com/v1/recommendations?${query}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -66,7 +68,7 @@ export async function POST(req: Request): Promise<Response> {
       image: track.album.images?.[0]?.url || null,
     }));
 
-    return Response.json({ tracks: recommendations });
+    return Response.json(recommendations); // directly return array
   } catch (err: any) {
     console.error("Recommendation API Error:", err.message);
     return Response.json({ error: "Internal Server Error", details: err.message }, { status: 500 });

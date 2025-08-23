@@ -42,7 +42,7 @@ export default function HomePage() {
       }
 
       const recs = await recRes.json();
-      setTracks(recs);
+      setTracks(recs || []);
     } catch (err: any) {
       console.error("Error:", err);
       setError(err.message || "Something went wrong");
