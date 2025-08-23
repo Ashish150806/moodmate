@@ -7,16 +7,26 @@ export default function HomePage() {
   const [mood, setMood] = useState<string | null>(null);
   const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setLoading(true);
+    setError(null);
+    setMood(null);
+    setTracks([]);
+
     try {
-      // 1. Infer mood
+      // 1. Infer mood (calls Flask via Next.js API)
       const moodRes = await fetch("/api/mood/infer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
+
+      if (!moodRes.ok) {
+        throw new Error("Mood API failed");
+      }
+
       const { mood } = await moodRes.json();
       setMood(mood);
 
@@ -26,10 +36,16 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mood }),
       });
+
+      if (!recRes.ok) {
+        throw new Error("Recommendation API failed");
+      }
+
       const recs = await recRes.json();
       setTracks(recs);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error:", err);
+      setError(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -58,8 +74,13 @@ export default function HomePage() {
         {loading ? "Thinking..." : "Get Songs"}
       </button>
 
+      {/* Error */}
+      {error && (
+        <div className="mt-4 text-red-600 dark:text-red-400">{error}</div>
+      )}
+
       {/* Mood */}
-      {mood && (
+      {mood && !error && (
         <div className="mt-6 text-lg">
           <span className="font-semibold">Detected Mood:</span> {mood}
         </div>
@@ -89,7 +110,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="absolute bottom-6 text-sm text-gray-500 dark:text-gray-400">
-        Built with ❤️ using Next.js & Spotify API
+        Built with ❤️ using Next.js + Flask + Spotify API
       </footer>
     </main>
   );

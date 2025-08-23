@@ -1,66 +1,38 @@
-export const runtime = "nodejs"; // run on edge runtime
+import { NextRequest, NextResponse } from "next/server";
 
-import * as tf from "@tensorflow/tfjs";
+export const runtime = "nodejs"; // ensure runs in Node.js, not edge
 
-let model: tf.LayersModel | null = null;
-
-async function loadModel() {
-  if (!model) {
-    // Use environment variable, fallback to local public folder
-    const baseUrl = process.env.NEXT_PUBLIC_MODEL_BASE_URL || "";
-    const modelUrl = `${baseUrl}/ml-model/model.json`;
-
-    model = await tf.loadLayersModel(modelUrl);
-    console.log("✅ Model loaded from:", modelUrl);
-  }
-  return model;
-}
-
-// Simple character-level encoding
-function encodeText(text: string): number[] {
-  return text
-    .toLowerCase()
-    .split("")
-    .map((ch) => ch.charCodeAt(0) % 100);
-}
-
-export async function POST(req: Request): Promise<Response> {
+export async function POST(req: NextRequest) {
   try {
     const { text } = await req.json();
     if (!text || typeof text !== "string") {
-      return new Response(JSON.stringify({ error: "Invalid input" }), {
-        status: 400,
-      });
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
-    const model = await loadModel();
+    // Forward request to Flask backend
+    const flaskUrl = process.env.FLASK_API_URL || "http://127.0.0.1:5000/predict";
 
-    // Encode & pad sequence
-    const encoded = encodeText(text);
-    const MAX_LEN = 100; // must match training preprocessing
-    const padded = new Array(MAX_LEN).fill(0);
-    for (let i = 0; i < Math.min(encoded.length, MAX_LEN); i++) {
-      padded[i] = encoded[i];
-    }
-
-    const inputTensor = tf.tensor2d([padded], [1, MAX_LEN]);
-
-    // Run prediction
-    const prediction = model.predict(inputTensor) as tf.Tensor;
-    const predictionData = Array.from(await prediction.data());
-    const moodIdx = predictionData.indexOf(Math.max(...predictionData));
-
-    // Clean up tensor to avoid memory leak
-    tf.dispose([inputTensor, prediction]);
-
-    const moods = ["Positive", "Neutral", "Negative", "Irrelevant"];
-    const mood = moods[moodIdx] ?? "unknown";
-
-    return Response.json({ mood, scores: predictionData });
-  } catch (err: any) {
-    console.error("❌ Error in inference:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
+    const res = await fetch(flaskUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return NextResponse.json(
+        { error: "Flask API error", details: errText },
+        { status: res.status }
+      );
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (err: any) {
+    console.error("❌ Error in Next.js API:", err);
+    return NextResponse.json(
+      { error: "Internal Server Error", details: err.message },
+      { status: 500 }
+    );
   }
 }
